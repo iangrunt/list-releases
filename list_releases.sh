@@ -44,21 +44,23 @@ if [ -z "$repos" ]; then
     exit 1
 fi
 
-# Determine the longest repository name
+# Determine the longest repository name without the organization prefix
 max_length=0
 for repo in $repos; do
-    length=${#repo}
+    repo_name=${repo#$ORGANIZATION/}
+    length=${#repo_name}
     if [ $length -gt $max_length ]; then
         max_length=$length
     fi
 done
 
 # Define a format for the table
-format="%-${max_length}s | %-20s\n"
+format="| %-${max_length}s | %-20s |\n"
+line_format="| $(printf "%-${max_length}s" | tr " " "-") | -------------------- |"
 
-# Print table header
-printf "$format" "Repository" "Latest Release"
-printf "$format" $(printf "%-${max_length}s" | tr " " "-") "--------------------"
+# Print table header with distinct styling
+printf "| %-${max_length}s | %-20s |\n" "Repository" "Latest Release"
+printf "%s\n" "$line_format"
 
 # Loop through each repository
 for repo in $repos; do
@@ -89,7 +91,9 @@ for repo in $repos; do
 
         # If release is not empty, print repo and release
         if [ -n "$release" ]; then
-            printf "$format" "$repo" "$release"
+            repo_name=${repo#$ORGANIZATION/}
+            printf "$format" "$repo_name" "$release"
+            printf "%s\n" "$line_format"
         fi
     fi
 done
