@@ -36,39 +36,49 @@ done
 
 # Fetch and sort the list of repositories for the given organization
 # Adjust '--limit' as needed
-repos=$(gh repo list $ORGANIZATION --limit 100 --json nameWithOwner --jq '.[].nameWithOwner' | sort)
+repo_data=$(gh repo list $ORGANIZATION --limit 100 --json nameWithOwner,url --jq '.[] | "\(.nameWithOwner) \(.url)"' | sort)
 
 # Check if repos are empty
-if [ -z "$repos" ]; then
+if [ -z "$repo_data" ]; then
     echo "No repositories found for organization: $ORGANIZATION"
     exit 1
 fi
 
-# Determine the longest repository name without the organization prefix
-max_length=0
-for repo in $repos; do
+# Determine the longest repository name and URL
+max_name_length=0
+max_url_length=0
+while IFS=' ' read -r repo url; do
     repo_name=${repo#$ORGANIZATION/}
-    length=${#repo_name}
-    if [ $length -gt $max_length ]; then
-        max_length=$length
+    name_length=${#repo_name}
+    url_length=${#url}
+
+    if [ $name_length -gt $max_name_length ]; then
+        max_name_length=$name_length
     fi
-done
+    if [ $url_length -gt $max_url_length ]; then
+        max_url_length=$url_length
+    fi
+done <<< "$repo_data"
 
 # Define a format for the table
-format="| %-${max_length}s | %-20s |\n"
-line_format="| $(printf "%-${max_length}s" | tr " " "-") | -------------------- |"
+format="| %-${max_name_length}s | %-20s | %-${max_url_length}s |\n"
+line_format="| $(printf "%-${max_name_length}s" | tr " " "-") | -------------------- | $(printf "%-${max_url_length}s" | tr " " "-") |"
 
 # Print table header with distinct styling
-printf "| %-${max_length}s | %-20s |\n" "Repository" "Latest Release"
+printf "\n"
+printf "%s\n" "$line_format"
+printf "| %-${max_name_length}s | %-20s | %-${max_url_length}s |\n" "   Repository   " "   Latest Release   " "   URL   "
 printf "%s\n" "$line_format"
 
-# Loop through each repository
-for repo in $repos; do
+# Loop through each line of repository data
+while IFS=' ' read -r repo url; do
     skip=0
+    repo_info=($repo)
+    repo_name=${repo_info[0]#$ORGANIZATION/}
 
     # Filter out repositories based on substrings
     for substr in $EXCLUDE_SUBSTRINGS; do
-        if [[ "$repo" == *"$substr"* ]]; then
+        if [[ "$repo_name" == *"$substr"* ]]; then
             skip=1
             break
         fi
@@ -78,7 +88,7 @@ for repo in $repos; do
     if [ -n "$INCLUDE_SUBSTRINGS" ]; then
         skip=1
         for substr in $INCLUDE_SUBSTRINGS; do
-            if [[ "$repo" == *"$substr"* ]]; then
+            if [[ "$repo_name" == *"$substr"* ]]; then
                 skip=0
                 break
             fi
@@ -87,14 +97,15 @@ for repo in $repos; do
 
     if [ $skip -eq 0 ]; then
         # Fetch the latest release
-        release=$(gh release view --repo "$repo" --json tagName --jq '.tagName' 2>/dev/null)
+        release=$(gh release view --repo "${repo_info[0]}" --json tagName --jq '.tagName' 2>/dev/null)
 
         # If release is not empty, print repo and release
         if [ -n "$release" ]; then
-            repo_name=${repo#$ORGANIZATION/}
-            printf "$format" "$repo_name" "$release"
+            printf "$format" "$repo_name" "$release" "$url"
             printf "%s\n" "$line_format"
         fi
     fi
-done
+done <<< "$repo_data"
+
+printf "\n"
 
